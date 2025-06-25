@@ -1,48 +1,63 @@
 function newsletterForms() {
-    const forms = document.querySelectorAll('[data-form="klaviyo"]');
-    const apiKey = "T6wHNs";
-    const listId = "TVZZ7n";
-  
-    forms.forEach((form) => {
-      form.addEventListener("submit", async function (e) {
-        e.preventDefault();
-  
-        const input = form.querySelector('input[type="email"]');
-        const success = form.querySelector(".w-form-done");
-        const error = form.querySelector(".w-form-fail");
-  
-        if (!input) return;
-        const email = input.value.trim();
-  
-        if (success) success.style.display = "none";
-        if (error) error.style.display = "none";
-  
-        try {
-          const res = await fetch(
-            `https://a.klaviyo.com/api/v2/list/${listId}/subscribe`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                api_key: apiKey,
-                profiles: [{ email }],
-              }),
-            }
-          );
-  
-          if (res.ok) {
-            input.value = "";
-            if (form) form.style.display = "none";
-            if (success) success.style.display = "block";
-          } else {
-            if (error) error.style.display = "block";
+  const forms = document.querySelectorAll('[data-form="klaviyo"]');
+  const publicApiKey = "T6wHNs";
+  const listId = "TVZZ7n";
+
+  forms.forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = form.querySelector('input[type="email"]');
+      const success = form.querySelector(".w-form-done");
+      const error = form.querySelector(".w-form-fail");
+      const email = input?.value?.trim();
+      if (!email) return;
+
+      success?.style.setProperty("display", "none");
+      error?.style.setProperty("display", "none");
+
+      try {
+        const res = await fetch(
+          `https://a.klaviyo.com/client/subscriptions/?company_id=${publicApiKey}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/vnd.api+json",
+              Revision: "2025-01-15",
+            },
+            body: JSON.stringify({
+              data: {
+                type: "subscription",
+                attributes: {
+                  profile: {
+                    data: {
+                      type: "profile",
+                      attributes: { email },
+                    },
+                  },
+                },
+                relationships: {
+                  list: { data: { type: "list", id: listId } },
+                },
+              },
+            }),
           }
-        } catch (err) {
-          if (error) error.style.display = "block";
-          console.error("Subscribe error:", err);
+        );
+
+        if (res.ok) {
+          success?.style.setProperty("display", "block");
+          setTimeout(() => {
+            form.style.display = "none";
+          }, 300);
+        } else {
+          console.error("Subscribe failed:", await res.text());
+          error?.style.setProperty("display", "block");
         }
-      });
+      } catch (err) {
+        console.error("Klaviyo subscribe error:", err);
+        error?.style.setProperty("display", "block");
+      }
     });
-  }
-  
-  newsletterForms();  
+  });
+}
+
+newsletterForms();
