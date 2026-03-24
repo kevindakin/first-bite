@@ -2,15 +2,20 @@ function newsletterForms() {
   const forms = document.querySelectorAll('[data-form="klaviyo"]');
   const publicApiKey = "T6wHNs";
   const listId = "TVZZ7n";
+  const loadTime = Date.now();
 
   forms.forEach((form) => {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = form.querySelector('input[type="email"]');
+      const honeypot = form.querySelector('input[name="website"]');
       const success = form.querySelector(".w-form-done");
       const error = form.querySelector(".w-form-fail");
       const email = input?.value?.trim();
+
       if (!email) return;
+      if (honeypot?.value) return;
+      if (Date.now() - loadTime < 3000) return;
 
       success?.style.setProperty("display", "none");
       error?.style.setProperty("display", "none");
@@ -60,4 +65,6 @@ function newsletterForms() {
   });
 }
 
-newsletterForms();
+document.addEventListener("DOMContentLoaded", function () {
+  newsletterForms();
+});
