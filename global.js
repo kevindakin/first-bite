@@ -228,6 +228,15 @@ function externalLinks() {
   });
 }
 
+function hiringTag() {
+  document.querySelectorAll(".nav_link-wrapper").forEach((wrapper) => {
+    const tag = wrapper.querySelector(".nav_link-tag");
+    if (!tag) return;
+    const hasRoles = wrapper.querySelector(".w-dyn-item") !== null;
+    tag.style.display = hasRoles ? "block" : "none";
+  });
+}
+
 function buttonHover() {
   const links = document.querySelectorAll(".btn_primary");
   if (!links.length) return;
@@ -364,6 +373,7 @@ window.addEventListener("load", () => {
   navScroll();
   copyright();
   externalLinks();
+  hiringTag();
   imageReveal();
   fadeUp();
   fadeLeft();
