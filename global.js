@@ -30,7 +30,7 @@ function mobileMenu() {
   gsap.set(links, { y: "4rem", opacity: 0 });
   gsap.set(btnWrap, { y: "4rem", opacity: 0 });
 
-  let mobileMenuAnim = gsap.timeline({
+  const mobileMenuAnim = gsap.timeline({
     paused: true,
     defaults: {
       duration: durationBase,
@@ -91,27 +91,47 @@ function mobileMenu() {
       "<0.3"
     );
 
-  button.addEventListener("click", () => {
-    if (!menu.classList.contains("is-open")) {
-      menu.style.display = "flex";
-      menu.style.pointerEvents = "auto";
-      requestAnimationFrame(() => {
-        menu.classList.add("is-open");
-        mobileMenuAnim.timeScale(1).play();
-        disableScrolling();
-      });
-    } else {
-      menu.classList.remove("is-open");
-      menu.style.pointerEvents = "none";
-      mobileMenuAnim
-        .timeScale(2)
-        .reverse()
-        .eventCallback("onReverseComplete", () => {
-          menu.style.display = "none";
-        });
-      enableScrolling();
-    }
+  mobileMenuAnim.eventCallback("onReverseComplete", () => {
+    menu.style.display = "none";
   });
+
+  const isOpen = () => menu.classList.contains("is-open");
+
+  const openMenu = () => {
+    menu.style.display = "flex";
+    menu.style.pointerEvents = "auto";
+    requestAnimationFrame(() => {
+      menu.classList.add("is-open");
+      mobileMenuAnim.timeScale(1).play();
+      disableScrolling();
+    });
+  };
+
+  const closeMenu = () => {
+    menu.classList.remove("is-open");
+    menu.style.pointerEvents = "none";
+    enableScrolling();
+    mobileMenuAnim.timeScale(2).reverse();
+  };
+
+  button.addEventListener("click", () => {
+    isOpen() ? closeMenu() : openMenu();
+  });
+
+  // Capture phase: runs before the dropdown toggle handler can preventDefault.
+  // stopPropagation blocks that handler without blocking the anchor's navigation.
+  document.addEventListener(
+    "click",
+    (event) => {
+      const link = event.target.closest("a[href]");
+      if (!link || !menu.contains(link)) return;
+
+      event.stopPropagation();
+
+      if (isOpen()) closeMenu();
+    },
+    true
+  );
 }
 
 function navScroll() {
