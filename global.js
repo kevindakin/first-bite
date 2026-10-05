@@ -248,6 +248,107 @@ function externalLinks() {
   });
 }
 
+function initLottie() {
+  const LOTTIE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js';
+  const LOAD_MARGIN = '300px 0px'; // start loading this far before entering the viewport
+  const PLAY_THRESHOLD = 0.75;     // portion visible before playback starts
+ 
+  const elements = document.querySelectorAll('[data-lottie="element"]');
+  if (!elements.length || !('IntersectionObserver' in window)) return;
+ 
+  const instances = new WeakMap();
+  let libPromise;
+ 
+  // Load lottie-web once, shared across all animations
+  function loadLibrary() {
+    if (!libPromise) {
+      libPromise = new Promise((resolve, reject) => {
+        if (window.lottie) return resolve(window.lottie);
+        const script = document.createElement('script');
+        script.src = LOTTIE_URL;
+        script.async = true;
+        script.onload = () => resolve(window.lottie);
+        script.onerror = () => reject(new Error('Failed to load lottie-web'));
+        document.head.appendChild(script);
+      });
+    }
+    return libPromise;
+  }
+ 
+  function play(state) {
+    if (!state.ready || !state.visible) return;
+    if (state.started) {
+      state.anim.play();
+    } else {
+      state.anim.goToAndPlay(0, true);
+      state.started = true;
+    }
+  }
+ 
+  // Plays/pauses based on visibility
+  const playObserver = new IntersectionObserver((entries) => {
+    entries.forEach(({ target, isIntersecting }) => {
+      const state = instances.get(target);
+      if (!state) return;
+      state.visible = isIntersecting;
+      if (isIntersecting) play(state);
+      else if (state.ready) state.anim.pause();
+    });
+  }, { threshold: PLAY_THRESHOLD });
+ 
+  async function createAnimation(el) {
+    const src = el.dataset.lottieSrc;
+    if (!src) {
+      console.warn('[lottie] Missing data-lottie-src on', el);
+      return;
+    }
+ 
+    try {
+      const lottie = await loadLibrary();
+      const anim = lottie.loadAnimation({
+        container: el,
+        renderer: el.dataset.lottieRenderer || 'svg',
+        loop: el.dataset.lottieLoop !== 'false',
+        autoplay: false,
+        path: src,
+        rendererSettings: {
+          preserveAspectRatio: 'xMidYMid meet',
+          progressiveLoad: true,
+        },
+      });
+ 
+      const state = { anim, ready: false, visible: false, started: false };
+      instances.set(el, state);
+ 
+      // Hold on the first frame until the element is actually in view
+      anim.addEventListener('DOMLoaded', () => {
+        anim.goToAndStop(0, true);
+        state.ready = true;
+        if (state.visible) play(state);
+      });
+ 
+      anim.addEventListener('data_failed', () => {
+        console.error('[lottie] Failed to load animation data:', src);
+      });
+ 
+      playObserver.observe(el);
+    } catch (err) {
+      console.error('[lottie]', err);
+    }
+  }
+ 
+  // Triggers loading as elements approach the viewport
+  const loadObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(({ target, isIntersecting }) => {
+      if (!isIntersecting) return;
+      observer.unobserve(target);
+      createAnimation(target);
+    });
+  }, { rootMargin: LOAD_MARGIN });
+ 
+  elements.forEach((el) => loadObserver.observe(el));
+}
+
 function hiringTag() {
   document.querySelectorAll(".nav_link-wrapper").forEach((wrapper) => {
     const tag = wrapper.querySelector(".nav_link-tag");
@@ -393,6 +494,7 @@ window.addEventListener("load", () => {
   navScroll();
   copyright();
   externalLinks();
+  initLottie();
   hiringTag();
   imageReveal();
   fadeUp();
