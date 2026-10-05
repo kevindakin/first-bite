@@ -249,7 +249,9 @@ function externalLinks() {
 }
 
 function initLottie() {
-  const LOTTIE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js';
+  const LOTTIE_WEB_URL = 'https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js';
+  // Pin to a specific version before launch, e.g. @lottiefiles/dotlottie-web@X.Y.Z/+esm
+  const DOTLOTTIE_URL = 'https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web/+esm';
   const LOAD_MARGIN = '300px 0px'; // start loading this far before entering the viewport
   const PLAY_THRESHOLD = 0.75;     // portion visible before playback starts
  
@@ -257,30 +259,110 @@ function initLottie() {
   if (!elements.length || !('IntersectionObserver' in window)) return;
  
   const instances = new WeakMap();
-  let libPromise;
+  let lottieWebPromise;
+  let dotLottiePromise;
  
-  // Load lottie-web once, shared across all animations
-  function loadLibrary() {
-    if (!libPromise) {
-      libPromise = new Promise((resolve, reject) => {
+  // ---------- Library loaders (each loads once, shared across animations) ----------
+ 
+  function loadLottieWeb() {
+    if (!lottieWebPromise) {
+      lottieWebPromise = new Promise((resolve, reject) => {
         if (window.lottie) return resolve(window.lottie);
         const script = document.createElement('script');
-        script.src = LOTTIE_URL;
+        script.src = LOTTIE_WEB_URL;
         script.async = true;
         script.onload = () => resolve(window.lottie);
         script.onerror = () => reject(new Error('Failed to load lottie-web'));
         document.head.appendChild(script);
       });
     }
-    return libPromise;
+    return lottieWebPromise;
   }
  
+  function loadDotLottie() {
+    if (!dotLottiePromise) {
+      dotLottiePromise = import(DOTLOTTIE_URL).then((module) => module.DotLottie);
+    }
+    return dotLottiePromise;
+  }
+ 
+  // ---------- Players (both return the same play / pause / restart interface) ----------
+ 
+  async function createLottieWebPlayer(el, src, loop, renderer, onReady) {
+    const lottie = await loadLottieWeb();
+    const anim = lottie.loadAnimation({
+      container: el,
+      renderer,
+      loop,
+      autoplay: false,
+      path: src,
+      rendererSettings: {
+        preserveAspectRatio: 'xMidYMid meet',
+        progressiveLoad: true,
+      },
+    });
+ 
+    anim.addEventListener('DOMLoaded', () => {
+      anim.goToAndStop(0, true);
+      onReady();
+    });
+ 
+    anim.addEventListener('data_failed', () => {
+      console.error('[lottie] Failed to load animation data:', src);
+    });
+ 
+    return {
+      play: () => anim.play(),
+      pause: () => anim.pause(),
+      restart: () => anim.goToAndPlay(0, true),
+    };
+  }
+ 
+  async function createDotLottiePlayer(el, src, loop, onReady) {
+    const DotLottie = await loadDotLottie();
+ 
+    const canvas = document.createElement('canvas');
+    canvas.style.display = 'block';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    el.appendChild(canvas);
+ 
+    const anim = new DotLottie({
+      canvas,
+      src,
+      loop,
+      autoplay: false,
+      renderConfig: { autoResize: true },
+      layout: { fit: 'contain', align: [0.5, 0.5] },
+    });
+ 
+    anim.addEventListener('load', () => {
+      anim.setFrame(0);
+      onReady();
+    });
+ 
+    anim.addEventListener('loadError', (event) => {
+      console.error('[lottie] dotLottie failed to load:', src, event);
+    });
+ 
+    return {
+      play: () => anim.play(),
+      pause: () => anim.pause(),
+      restart: () => {
+        anim.setFrame(0);
+        anim.play();
+      },
+    };
+  }
+ 
+  // ---------- Playback ----------
+ 
   function play(state) {
-    if (!state.ready || !state.visible) return;
+    if (!state.player || !state.ready || !state.visible) return;
     if (state.started) {
-      state.anim.play();
+      state.player.play();
     } else {
-      state.anim.goToAndPlay(0, true);
+      state.player.restart();
       state.started = true;
     }
   }
@@ -292,7 +374,7 @@ function initLottie() {
       if (!state) return;
       state.visible = isIntersecting;
       if (isIntersecting) play(state);
-      else if (state.ready) state.anim.pause();
+      else if (state.player && state.ready) state.player.pause();
     });
   }, { threshold: PLAY_THRESHOLD });
  
@@ -303,35 +385,22 @@ function initLottie() {
       return;
     }
  
+    const renderer = el.dataset.lottieRenderer || 'svg';
+    const loop = el.dataset.lottieLoop !== 'false';
+    const state = { player: null, ready: false, visible: false, started: false };
+    instances.set(el, state);
+    playObserver.observe(el);
+ 
+    const onReady = () => {
+      state.ready = true;
+      play(state);
+    };
+ 
     try {
-      const lottie = await loadLibrary();
-      const anim = lottie.loadAnimation({
-        container: el,
-        renderer: el.dataset.lottieRenderer || 'svg',
-        loop: el.dataset.lottieLoop !== 'false',
-        autoplay: false,
-        path: src,
-        rendererSettings: {
-          preserveAspectRatio: 'xMidYMid meet',
-          progressiveLoad: true,
-        },
-      });
- 
-      const state = { anim, ready: false, visible: false, started: false };
-      instances.set(el, state);
- 
-      // Hold on the first frame until the element is actually in view
-      anim.addEventListener('DOMLoaded', () => {
-        anim.goToAndStop(0, true);
-        state.ready = true;
-        if (state.visible) play(state);
-      });
- 
-      anim.addEventListener('data_failed', () => {
-        console.error('[lottie] Failed to load animation data:', src);
-      });
- 
-      playObserver.observe(el);
+      state.player = renderer === 'dotlottie'
+        ? await createDotLottiePlayer(el, src, loop, onReady)
+        : await createLottieWebPlayer(el, src, loop, renderer, onReady);
+      play(state);
     } catch (err) {
       console.error('[lottie]', err);
     }
